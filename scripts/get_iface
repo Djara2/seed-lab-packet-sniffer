@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+docker network ls | grep net-10 | awk '{print $1}' > docker-network-ls-out.txt

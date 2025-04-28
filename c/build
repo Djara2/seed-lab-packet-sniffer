@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+gcc pcap_sniffer.c -o pcap_sniffer -lpcap

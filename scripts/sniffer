@@ -1,0 +1,34 @@
+#!/usr/bin/env python3
+from scapy.all import * 
+from os import system, getcwd
+from sys import stderr, stdout, stdin
+
+# "packet" parameter is of type scapy.layer.inet.IP 
+# which is returned by init function IP()
+def print_packet(packet) -> None:
+    packet.show()
+
+# SECTION 01: Get IFACE programmatically
+# - from `docker network ls | grep net-10.9.0.0` with "br-" appended
+system("./get_iface")
+IFACE_file_name = "docker-network-ls-out.txt"
+IFACE_fh = open(IFACE_file_name, "r")
+if (IFACE_fh == None):
+    stderr.write("IFACE file could not be opened (file handle is NULL).\n")
+    exit()
+
+IFACE = IFACE_fh.read()
+# (2) drop the newline
+IFACE = "br-" + IFACE[0 : len(IFACE) - 1]
+IFACE_fh.close()
+print("Sanity check: IFACE is \"{}\"".format(IFACE))
+
+# of type scapy.layer.inet.IP
+ip_address = IP()
+ip_address.show()
+
+# iface can be a list as well
+# prn parameter is a callback function
+packet = sniff(iface = IFACE, filter="icmp", prn = print_packet)
+
+

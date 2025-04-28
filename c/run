@@ -1,0 +1,4 @@
+#!/usr/bin/env bash 
+NIC="$(docker network ls | grep net-10 | awk '{print $1}')"
+echo -e "NIC is \"$NIC\""
+sudo ./pcap_sniffer "br-$NIC"
