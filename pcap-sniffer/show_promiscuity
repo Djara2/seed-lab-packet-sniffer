@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+device=""
+if [ $# -eq 0 ]; then
+	echo -n "Enter device: "
+	read device
+else
+	device="$1"
+fi
+
+ip -d link show dev $device
