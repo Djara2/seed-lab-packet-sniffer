@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+
+echo "NOTE that you may need to use a different NIC"
+echo "for the container and that the scripts may not"
+echo "necessarily work as they do on the host. If you"
+echo "run into problems, then use the pcap_sniffer binary"
+echo "and supply the command line arguments manually."
+
+container=""
+if [ $# -lt 1 ]; then 
+	echo -n "Docker container id: "
+	read container
+else
+	container="$1"
+fi
+
+docker exec -u root -t -i $container /bin/bash
