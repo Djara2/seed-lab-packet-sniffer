@@ -1,11 +1,18 @@
+<p>David Jara</p>
+<p>April 28th, 2025</p>
+
+<h1 style="text-align: center;">SEED Lab: Packet Sniffing</h1>
+
 # Table of Contents
 
-<a href="#LINK">Link</a>
-<a href="#LINK">Link</a>
-<a href="#LINK">Link</a>
-<a href="#LINK">Link</a>
-<a href="#LINK">Link</a>
-<a href="#LINK">Link</a>
+<ol type="I">
+	<li><a href="#LINK">Link</a></li>
+	<li><a href="#LINK">Link</a></li>
+	<li><a href="#LINK">Link</a></li>
+	<li><a href="#LINK">Link</a></li>
+	<li><a href="#LINK">Link</a></li>
+	<li><a href="#LINK">Link</a></li>
+</ol>
 
 # Task 2.1A: Understanding How a Sniffer Works
 
