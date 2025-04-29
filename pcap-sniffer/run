@@ -1,0 +1,54 @@
+#!/usr/bin/env bash  
+NIC="$(docker network ls | grep net-10 | awk '{print $1}')" 
+echo "Running launcher script..."
+echo -e "NIC is \"$NIC\""
+
+case $# in 
+
+	0) 
+		echo -n "Promiscuity [0 or 1]: "
+		read $promiscuity
+		echo -n "Filter expression [default: icmp]: "
+		read $filter_expression
+		if [ "$filter_expression" = "" ]; then
+			echo "No input provided for filter expression."
+			echo -e "Default value of \"icmp\" will be used."
+			filter_expression="icmp"
+		fi
+		;;
+	
+	1)
+		if [ "$1" = "0" ] || [ "$1" = "1" ]; then 
+			promiscuity="$1"
+			echo -e "Determined parameter \"$1\" is the promiscuity."
+			echo -n "Filter expression: "
+			read $filter_expression
+		else
+			echo -e "Determined \"$1\" is the filter expression."
+			echo -n "Promiscuity [0 or 1]: "
+			read $promiscuity
+		fi
+		;;
+
+	2)
+		if [ "$1" = "0" ] || [ "$1" = "1" ]; then
+			echo -e "Determined promiscuity is \"$1\" and filter expression is \"$2\""
+			promiscuity="$1"
+			filter_expression="$2"
+		elif [ "$2" = "0" ] || [ "$2" = "1" ]; then
+			echo -e "Determined promiscuity is \"$2\" and filter expression is \"$1\""
+			promiscuity="$2"
+			filter_expression="$1"
+		else
+			echo "Provided parameters do not meet expectations."
+			exit 1
+		fi
+		;; 
+	*)
+		echo "Too many arguments provided."
+		exit 1
+		;;
+esac
+		
+echo "Executing program..."
+sudo ./pcap_sniffer --nic "br-$NIC" --promiscuity $promiscuity --filter "$filter_expression"
