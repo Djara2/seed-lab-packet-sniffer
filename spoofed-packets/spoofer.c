@@ -9,6 +9,7 @@
 #include <netinet/icmp6.h>
 #include <arpa/inet.h>
 #include <time.h>
+#include <stdbool.h>
 
 #define MAX_PACKET_SIZE 4096
 #define DEFAULT_TTL 64
@@ -31,7 +32,170 @@ enum ProgramParameter {
 	PARAMETER_NUMBER_OF_PACKETS
 };
 
+enum ProgramError {
+	ERROR_NONE,
+	ERROR_NULL_POINTER
+};
+
+struct IPHeader {
+	unsigned char version_and_hlen;
+	unsigned char type_of_service;
+	unsigned short total_length;
+	unsigned short identification;
+	unsigned short res_df_mf_fragment_offset;
+	unsigned char ttl;
+	unsigned char protocol;
+	unsigned short header_checksum;
+	unsigned char source_ip[4];
+	unsigned char destination_ip[4];
+	unsigned char *option;
+	unsigned char option_length;	// do not write to buffer
+	unsigned char *data;
+	unsigned short data_length;	// do not write to buffer
+};
+
+unsigned char get_res_bit(struct IPHeader *ip_header, enum ProgramError *error) {
+	if (ip_header == NULL) {
+		fprintf(stderr, "IP header struct points to NULL.\n");
+		(*error) = ERROR_NULL_POINTER;
+		return 0;
+	}
+	unsigned short ignore_lower_bits_bitmask = 0x8000;
+	unsigned short res = ip_header->res_df_mf_fragment_offset & ignore_lower_bits_bitmask;
+	(*error) = ERROR_NONE;
+	if (res == 0) return 0;
+	else 	      return 1;
+}
+
+unsigned char get_df_bit(struct IPHeader *ip_header, enum ProgramError *error) {
+	if (ip_header == NULL) {
+		fprintf(stderr, "IP header struct points to NULL.\n");
+		(*error) = ERROR_NULL_POINTER;
+		return 0;
+	}
+
+	unsigned short ignore_other_bits_bitmask = 0x4000;
+	unsigned short df = ip_header->res_df_mf_fragment_offset & ignore_other_bits_bitmask;
+	(*error) = ERROR_NONE;
+	if (df == 0) return 0;
+	else	     return 1;
+}
+
+unsigned char get_mf_bit(struct IPHeader *ip_header, enum ProgramError *error) {
+	if (ip_header == NULL) {
+		fprintf(stderr, "IP header struct points to NULL.\n");
+		(*error) = ERROR_NULL_POINTER;
+		return 0;
+	}
+
+	unsigned short ignore_other_bits_bitmask = 0x2000;
+	unsigned short mf = ip_header->res_df_mf_fragment_offset & ignore_other_bits_bitmask;
+	(*error) = ERROR_NONE;
+	if (mf == 0) return 0;
+	else	     return 1;
+}
+
+bool set_res_low(struct IPHeader *ip_header) {
+	if (ip_header == NULL) {
+		fprintf(stderr, "IP header struct points to NULL.\n");
+		return false;
+	}
+	unsigned short res;
+	res = ip_header->res_df_mf_fragment_offset;
+	res = res & (~  (1 << 15));
+	ip_header->res_df_mf_fragment_offset = res;
+	return true;
+}
+
+bool set_res_high(struct IPHeader *ip_header) {
+	if (ip_header == NULL) {
+		fprintf(stderr, "IP Header struct points to NULL.\n");
+		return false;
+	}
+	unsigned short res;
+	res = ip_header->res_df_mf_fragment_offset;
+	res = res | (1 << 15); 
+	ip_header->res_df_mf_fragment_offset = res;
+
+	return true;
+}
+
+bool set_df_low(struct IPHeader *ip_header) {
+	if (ip_header == NULL) {
+		fprintf(stderr, "IP header struct points to NULL.\n");
+		return false;
+	}
+	unsigned short df;
+	df = ip_header->res_df_mf_fragment_offset;
+	df = df & (~  (1 << 14));
+	ip_header->res_df_mf_fragment_offset = df;
+	return true;
+}
+
+bool set_df_high(struct IPHeader *ip_header) {
+	if (ip_header == NULL) {
+		fprintf(stderr, "IP Header struct points to NULL.\n");
+		return false;
+	}
+	unsigned short df;
+	df = ip_header->res_df_mf_fragment_offset;
+	df = df | (1 << 14); 
+	ip_header->res_df_mf_fragment_offset = df;
+
+	return true;
+}
+
+bool set_mf_low(struct IPHeader *ip_header) {
+	if (ip_header == NULL) {
+		fprintf(stderr, "IP header struct points to NULL.\n");
+		return false;
+	}
+	unsigned short mf;
+	mf = ip_header->res_df_mf_fragment_offset;
+	mf = mf & (~  (1 << 13));
+	ip_header->res_df_mf_fragment_offset = mf;
+	return true;
+}
+
+bool set_mf_high(struct IPHeader *ip_header) {
+	if (ip_header == NULL) {
+		fprintf(stderr, "IP Header struct points to NULL.\n");
+		return false;
+	}
+	unsigned short mf;
+	mf = ip_header->res_df_mf_fragment_offset;
+	mf = mf | (1 << 13); 
+	ip_header->res_df_mf_fragment_offset = mf;
+
+	return true;
+}
+
+bool set_fragment_bits(struct IPHeader *ip_header, unsigned short v) {
+	if (v > 8192)
+		fprintf(stderr, "The provided value of %hu is too large for 13 bit representation. It will be modded by 8192 to ensure it falls on the appropriate range of [0, 8191].\n", v);
+
+	// ensure it falls on range [0, 8192]
+	v = v % 8192;
+
+	// clear the existing fragment bits, but maintain the flag bits
+	unsigned short ignore_flags_bitmask = 0xe000;
+	ip_header->res_df_mf_fragment_offset = ip_header->res_df_mf_fragment_offset & ignore_flags_bitmask;
+	
+	// define new value for whole thing
+	unsigned short new_res_df_mf_fragment_offset_value = ignore_flags_bitmask + v;
+	ip_header->res_df_mf_fragment_offset = new_res_df_mf_fragment_offset_value;
+
+	return true;
+}
+
+unsigned short get_fragment_bits(struct IPHeader *ip_header) {
+	unsigned short ignore_flags_bitmask = 0x1fff;
+	unsigned short fragment_bits = ignore_flags_bitmask & ip_header->res_df_mf_fragment_offset;
+	return fragment_bits;
+}
+
 int main(int argc, char **argv) {
+	printf("NOTE that this program requires superuser privileges.\n");
 	if (argc < 6) {
 		fprintf(stderr, "Insufficient arguments.\n");
 		return 1;
@@ -207,5 +371,27 @@ int main(int argc, char **argv) {
 				
 	}
 	printf("Sanity check:\n- Source ip: \"%s\"\n- Destination ip: \"%s\"\n- Source port: %hu\n- Destination port: %hu\n- Protocol: %d (\"%s\")\n- Payload: \"%s\"\n- Number of packets: %d\n\n", source_ip, destination_ip, source_port, destination_port, protocol, protocol_string_representation, payload, number_of_packets);
+
+	int socket_descriptor;
+	struct sockaddr_in sin;
+	char buffer[1024];	// representation of IP header
+	unsigned short buffer_length = 0;
+	socket_descriptor = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
+	if (socket_descriptor < 0) {
+		fprintf(stderr, "Failed to obtain a socket descriptor.\n");
+		exit(EXIT_FAILURE);
+	}
+
+	sin.sin_family = AF_INET;
+	// Construct the IP header. Be careful with network/host byte order
+	// (htonl and ntohl)
+	buffer[
+	
+	
+	// Send out the IP packet
+	if (sendto(socket_descriptor, buffer, buffer_length, 0, (struct sockaddr *) &sin, sizeof(sin)) < 0) {
+		fprintf(stderr, "Cannnot send packet.\n");
+		exit(EXIT_FAILURE);
+	}
 	return 0;
 }
