@@ -75,6 +75,21 @@ struct TCPHeader {
 	unsigned short urgent_pointer;
 };
 
+struct UDPHeader {
+	unsigned short source_port;
+	unsigned short destination_port;
+	unsigned short length;
+	unsigned short checksum;
+};
+
+struct ICMPHeader {
+	unsigned char type;		// 8 for echo request 
+	unsigned char code;		// 0 for echo request
+	unsigned short checksum;
+	unsigned short id;		// e.g. for echo
+	unsigned short sequence_number;	// e.g. for echo
+};
+
 struct PseudoHeader {
 	unsigned int source_address;
 	unsigned int destination_address;
@@ -330,7 +345,40 @@ int main(int argc, char **argv) {
 		}
 				
 	}
-	printf("Sanity check:\n- Source ip: \"%s\"\n- Destination ip: \"%s\"\n- Source port: %hu\n- Destination port: %hu\n- Protocol: %d (\"%s\")\n- Payload: \"%s\"\n- Number of packets: %d\n\n", source_ip, destination_ip, source_port, destination_port, protocol, protocol_string_representation, payload, number_of_packets);
+	unsigned short ip_header_total_length = sizeof(struct IPHeader);
+	switch (protocol) {
+		case IPPROTO_TCP:
+			ip_header_total_length += sizeof(struct TCPHeader);
+			break;
+
+		case IPPROTO_UDP:
+			ip_header_total_length += sizeof(struct UDPHeader);
+			break;
+
+		case IPPROTO_ICMP:
+			ip_header_total_length += sizeof(struct ICMPHeader);
+			break;
+		
+		default:
+			fprintf(stderr, "Protocol %d is not valid. Cannot calculate size of IP Header (IHL field) without being able to determine the encapsulated packet and its size. Valid protocols are TCP (%d), UPD (%d), and ICMP (%d).\n", IPPROTO_TCP, IPPROTO_UDP, IPPROTO_ICMP);
+			exit(EXIT_FAILURE);
+			break;
+	}
+
+	printf("Sanity check:\n- Source ip: \"%s\"\n- Destination ip: \"%s\"\n- Source port: %hu\n- Destination port: %hu\n- Protocol: %d (\"%s\")\n- Payload: \"%s\"\n- Number of packets: %d\n- Total length (IP IHL): %hu (%d from IP and ", source_ip, destination_ip, source_port, destination_port, protocol, protocol_string_representation, payload, number_of_packets, ip_header_total_length, sizeof(struct IPHeader));
+	if (protocol == IPPROTO_TCP) 
+		printf("%d from encapsulated TCP).\n", sizeof(struct TCPHeader));
+
+	else if (protocol == IPPROTO_UDP) 
+		printf("%d from encapsulated UDP).\n", sizeof(struct UDPHeader));
+	
+	else if (protocol == IPPROTO_ICMP) 
+		printf("%d from encapsulated ICMP).\n", sizeof(struct ICMPHeader));
+	
+	else {
+		fprintf(stderr, "Protocol %d is not valid. Cannot calculate size of IP Header (IHL field) without being able to determine the encapsulated packet and its size. Valid protocols are TCP (%d), UPD (%d), and ICMP (%d).\n", IPPROTO_TCP, IPPROTO_UDP, IPPROTO_ICMP);
+		exit(EXIT_FAILURE);
+	}
 	
 	// (1) Create the raw socket
 	int socket_descriptor;
@@ -343,40 +391,70 @@ int main(int argc, char **argv) {
 	// (2) Construct the IP header. Be careful with network/host byte order
 	//     (htonl and ntohl)
 	struct IPHeader ip_header = {
-		.version = 4,
-		.ihl = 5,
+		.version         = 4,	// IPv4
+		.ihl             = 5,	// 20 bytes (no options included - min IP header size)
+					// 5 * (4 byte-words) = 20 bytes
 
 		.type_of_service = 0,
-		.total_length = htonl(sizeof(struct IPHeader) + sizeof(struct TCPHeader)),	
-		.identification = htons(12345),
+		.total_length    = ip_header_total_length,
+		.identification  = htons(12345),
+		.protocol        = protocol,
 
-		.res = 0,
-		.df  = 0,
-		.mf  = 0,
-		.fragment_offset = 0, // no fragmentation
+		.res             = 0,
+		.df              = 0,
+		.mf              = 0,
+		.fragment_offset = 0, 			// no fragmentation
 
 		.ttl             = DEFAULT_TTL,
-		.protocol        = IPPROTO_TCP,
-		.checksum = 0, // to be computed later
+		.checksum 	 = 0, 			// to be computed later
 
 		.source_ip      = inet_addr(source_ip),
 		.destination_ip = inet_addr(destination_ip)
 	};
-	
+		
 	// (3) Construct the TCP/UDP/ICMP header. This is just a matter of setting the 
 	//      protocol field to 6 or 17 or 1, and then including the TCP packet immediately after the IP header.
-	struct TCPHeader tcp_header = {
-		.source_port            = htons(1234),
-		.destination_port       = htons(80),
-		.sequence_number        = htonl(1000),
-		.acknowledgement_number = 0,
-		.data_offset            = 4,
-		.reserved		= 0,
-		.flags 			= TH_SYN, 
-		.window_size 		= htons(5840),
-		.checksum 		= 0,
-		.urgent_pointer		= 0
-	};
+	switch (protocol) {
+		case IPPROTO_TCP:
+			struct TCPHeader tcp_header = {
+				.source_port            = htons(source_port),
+				.destination_port       = htons(destination_port),
+				.sequence_number        = htonl(1000),
+				.acknowledgement_number = 0,
+				.data_offset            = 4,
+				.reserved		= 0,
+				.flags 			= TH_SYN, 
+				.window_size 		= htons(5840),
+				.checksum 		= 0,	// computed later
+				.urgent_pointer		= 0
+			};
+			break;
+
+		case IPPROTO_UDP:
+			struct UDPHeader udp_header = {
+				.source_port      = htons(source_port),
+				.destination_port = htons(destination_port),
+				.length		  = 0,
+				.checksum 	  = 0		// computed later
+			};
+			break;
+
+		case IPPROTO_ICMP:
+			struct ICMPHeader icmp_header = {
+				.type            = 0,
+				.code            = 0,
+				.checksum        = 0,
+				.id              = 0,
+				.sequence_number = 0
+			};
+			break;
+
+		default:
+			fprintf(stderr, "Protocol %d is invalid. Cannot set encapsulated header fields. Valid protocol values are TCP (%d), UDP (%d), and ICMP (%d).\n", IPPROTO_TCP, IPPROTO_UDP, IPPROTO_ICMP);
+			exit(EXIT_FAILURE); 
+			break;
+	}
+
 
 	// (4) Combine headers into a singular packet
 	size_t packet_size = sizeof(struct IPHeader) + sizeof(struct TCPHeader);
@@ -389,14 +467,45 @@ int main(int argc, char **argv) {
 	( (struct IPHeader*) packet )->checksum = 0;
 	( (struct IPHeader*) packet )->checksum = compute_ip_checksum(packet, sizeof(struct IPHeader));
 
-	//     (2) Compute TCP checksum
-	( (struct TCPHeader*) (packet + sizeof(struct IPHeader)))->checksum = 0;
-	( (struct TCPHeader*) (packet + sizeof(struct IPHeader)))->checksum = compute_tcp_checksum( 
-			(struct IPHeader*)  packet,
-			(struct TCPHeader*) (packet + sizeof(struct IPHeader)),
-			NULL, // No payload 
-			0
-		     );
+	//     (2) Compute encapsulated checksum
+	switch (protocol) {
+		case IPPROTO_TCP:
+			( (struct TCPHeader*) (packet + sizeof(struct IPHeader)))->checksum = 0;
+			( (struct TCPHeader*) (packet + sizeof(struct IPHeader)))->checksum = compute_tcp_checksum( 
+					(struct IPHeader*)  packet,
+					(struct TCPHeader*) (packet + sizeof(struct IPHeader)),
+					NULL, // No payload 
+					0
+				     );
+			break;
+
+		// FIX THIS LATER - USING SAME CODE AS TCP 
+		case IPPROTO_UDP:
+			( (struct TCPHeader*) (packet + sizeof(struct IPHeader)))->checksum = 0;
+			( (struct TCPHeader*) (packet + sizeof(struct IPHeader)))->checksum = compute_tcp_checksum( 
+					(struct IPHeader*)  packet,
+					(struct TCPHeader*) (packet + sizeof(struct IPHeader)),
+					NULL, // No payload 
+					0
+				     );
+			break;
+
+		// FIX THIS LATER - USING SAME CODE AS TCP
+		case IPPROTO_ICMP:
+			( (struct TCPHeader*) (packet + sizeof(struct IPHeader)))->checksum = 0;
+			( (struct TCPHeader*) (packet + sizeof(struct IPHeader)))->checksum = compute_tcp_checksum( 
+					(struct IPHeader*)  packet,
+					(struct TCPHeader*) (packet + sizeof(struct IPHeader)),
+					NULL, // No payload 
+					0
+				     );
+			break;
+		
+		default:
+			fprintf(stderr, "naurrrr.\n");
+			exit(EXIT_FAILURE);
+			break;
+	}
 	
 	// (6) Send out the IP packet
 	struct sockaddr_in destination = { 
